@@ -111,6 +111,41 @@ macro_rules! test { ($tmod:ident => $cow:path) => {
         }
 
         #[test]
+        fn owned_zst_slice() {
+            let s = vec![(); 3];
+            let c: Cow<[()]> = Cow::owned(s.clone());
+
+            assert_eq!(s, c);
+            assert_eq!(c.into_owned(), s);
+
+            let empty: Cow<[()]> = Cow::owned(Vec::new());
+
+            assert_eq!(&*empty, &[]);
+        }
+
+        #[test]
+        fn owned_zst_slice_drops_elements() {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+
+            static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+            #[derive(Clone)]
+            struct Zst;
+
+            impl Drop for Zst {
+                fn drop(&mut self) {
+                    DROPS.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+
+            let c: Cow<[Zst]> = Cow::owned(vec![Zst, Zst, Zst]);
+            assert_eq!(DROPS.load(Ordering::Relaxed), 0);
+
+            drop(c);
+            assert_eq!(DROPS.load(Ordering::Relaxed), 3);
+        }
+
+        #[test]
         fn into_owned_vec() {
             let hello: &[u8] = b"Hello World";
             let borrowed = Cow::borrowed(hello);

@@ -16,7 +16,7 @@ pub(crate) mod internal {
     use alloc::borrow::ToOwned;
     use alloc::string::String;
     use alloc::vec::Vec;
-    use core::mem::ManuallyDrop;
+    use core::mem::{self, ManuallyDrop};
     use core::ptr::{slice_from_raw_parts, NonNull};
 
     pub trait InternalCapacity {
@@ -164,7 +164,17 @@ pub(crate) mod internal {
         {
             // Convert to `Vec::into_raw_parts` once stabilized
             let mut owned = ManuallyDrop::new(owned);
-            let (fat, cap) = U::store(owned.len(), owned.capacity());
+
+            // `Vec` reports a capacity of `usize::MAX` for zero-sized `T`, which
+            // doesn't fit in `beef::lean::Cow`. Nothing is allocated in that case,
+            // so store the length instead: `Vec::from_raw_parts` only requires
+            // `length <= capacity` for zero-sized `T`.
+            let capacity = if mem::size_of::<T>() == 0 {
+                owned.len()
+            } else {
+                owned.capacity()
+            };
+            let (fat, cap) = U::store(owned.len(), capacity);
 
             (
                 unsafe { NonNull::new_unchecked(owned.as_mut_ptr()) },
